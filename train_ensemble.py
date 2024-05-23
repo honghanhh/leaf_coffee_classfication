@@ -1,4 +1,5 @@
 import os
+import argparse
 import pandas as pd
 from torchvision.io import read_image
 from torch.utils.data import Dataset,DataLoader
@@ -7,11 +8,16 @@ from torchvision.transforms import ToTensor
 import numpy as np
 import torch
 from torch import nn
-import random
 from torch.optim.lr_scheduler import StepLR as StepLR
 from PIL import Image
 
-#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+torch.manual_seed(3407)
+import random
+random.seed(3407)
+import numpy as np
+np.random.seed(3407)
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 transform = transforms.Compose([
     transforms.Resize(224),
@@ -65,10 +71,8 @@ class EarlyEnsembleModel(nn.Module):
     def __init__(self, num_classes):
         super(EarlyEnsembleModel, self).__init__()
         self.efficientnet = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_efficientnet_b0', pretrained=True)
-
         self.mobilenet = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
-
-
+        self.vit = torch.hub.load('facebookresearch/deit:main', 'deit_base_patch16_224', pretrained=True)
         
         # Replace the classification layer of EfficientNet
         num_features = self.efficientnet.classifier.fc.in_features
@@ -76,6 +80,9 @@ class EarlyEnsembleModel(nn.Module):
         # Replace the classification layer of MobileNet
         num_features = self.mobilenet.classifier[1].in_features
         self.mobilenet.classifier[1] = nn.Linear(num_features, 128)
+        # Replace the classification layer of  Vision Transformer
+        num_features = self.vit.head.in_features
+        self.vit.head = nn.Linear(num_features, 128)
 
         self.fc = nn.Linear(128,num_classes)
     def forward(self, x):
@@ -97,6 +104,7 @@ device = (
     else "cpu"
 )
 print(f"Using {device} device")
+# assert 1==2
 ensemblemodel = EarlyEnsembleModel(5)
 ensemblemodel = ensemblemodel.to(device)
 
@@ -138,8 +146,16 @@ def test(dataloader, model, loss_fn):
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     return correct
+
 if __name__ =='__main__':
-    epochs = 60
+    import argparse
+    parser = argparse.ArgumentParser(description='Train Early Ensemble Model')
+    parser.add_argument('--epochs', type=int, default=60, help='number of epochs to train (default: 60)')
+    parser.add_argument('--model_path', type=str, default='./Ckpt/', help='path to save the best model')
+    args = parser.parse_args()
+    if not os.path.exists(args.model_path):
+        os.makedirs(args.model_path)
+    epochs = args.epochs
     acc_val = 0
     acc_test =0
     for t in range(epochs):
@@ -148,7 +164,7 @@ if __name__ =='__main__':
         current_acc = test(valid_dataloader, ensemblemodel, loss_fn)
         if current_acc > acc_val:
             acc_val = current_acc
-            torch.save(ensemblemodel.state_dict(), './Ckpt/best_acc_efficiennet_mobilenet.pth')
+            torch.save(ensemblemodel.state_dict(), args.model_path+ 'best_acc.pth')
         test(test_dataloader,ensemblemodel,loss_fn)
         scheduler.step()
     print("Done!")
