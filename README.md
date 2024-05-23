@@ -1,11 +1,12 @@
 # Leaf Cafe Classification
 
 ## Data
--  BRACOL dataset
+- [Coffee-Leaf-Diseases](./data/coffee-leaf-diseases/)
+- [Co-leaf](./data/CoLeaf/)
 
 ## Methods
 
-- [x] Test baseline model: Eefficientnet + MobileNetV2
+- [x] Test baseline model: EfficientNet + MobileNetV2
 - [x] Test [DeiT](https://github.com/facebookresearch/deit/blob/main/README_deit.md)
 - [x] Test [LoRA](https://huggingface.co/docs/peft/main/en/task_guides/image_classification_lora#image-classification-using-lora)
 

@@ -1,0 +1,2 @@
+python train_ensemble.py --data co-leaf --epochs 1 --model_path efficient_mobile_vit_coleaf > efficient_mobile_vit_coleaf.log
+# python train_ensemble.py --model_path efficient_mobile_vit > efficient_mobile_vit.log
