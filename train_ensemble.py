@@ -20,6 +20,7 @@ from torchvision.transforms import ToTensor
 
 from torch.optim.lr_scheduler import StepLR as StepLR
 from torch.utils.data import random_split, Subset
+from ignite.handlers import EarlyStopping
 
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -147,7 +148,7 @@ if __name__ =='__main__':
 
 
     if args.data == 'coffee-leaf-diseases':
-        transform = transforms.Compose([
+        transform_train = transforms.Compose([
             transforms.Resize((224,224)),
             #transforms.CenterCrop(224),
             transforms.RandomApply([
@@ -168,9 +169,9 @@ if __name__ =='__main__':
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]
         )
-        train_set  = dataset.ImageFolder('./data/symptom/train', transform_train)
-        val_set  = dataset.ImageFolder('./data/symptom/val', transform_test)
-        test_set  = dataset.ImageFolder('./data/symptom/test', transform_test)
+        train_set  = datasets.ImageFolder('./data/BRICOL/symptom/train', transform_train)
+        val_set  = datasets.ImageFolder('./data/BRICOL/symptom/val', transform_test)
+        test_set  = datasets.ImageFolder('./data/BRICOL/symptom/test', transform_test)
         classes = train_set.classes
         # dataset = CoffeeLeafDataset('./data/coffee-leaf-diseases/train_classes.csv','./data/coffee-leaf-diseases/train/images/', transform)
         # test_set = CoffeeLeafDataset('./data/coffee-leaf-diseases/test_classes.csv','./data/coffee-leaf-diseases/test/images/', transform_test)
@@ -215,9 +216,9 @@ if __name__ =='__main__':
         # Write the indices to the text file
         with open(output_file_path, 'w') as file:
             for index in test_indices:
-            file.write(f"{index}\n")
+                file.write(f"{index}\n")
             else:
-            raise ValueError('Dataset not supported')
+                raise ValueError('Dataset not supported')
     else:
         raise ValueError('Dataset not supported')
 
@@ -236,7 +237,7 @@ if __name__ =='__main__':
     print(f"Using {device} device")
     
     # assert 1==2
-    ensemble_model = EarlyEnsemble_model(classes)
+    ensemble_model = EarlyEnsemble_model(len(classes))
     ensemble_model = ensemble_model.to(device)
 
     loss_fn = nn.CrossEntropyLoss()
@@ -244,45 +245,45 @@ if __name__ =='__main__':
     scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
 
     # Define early stopping criteria
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+    # early_stopping = EarlyStopping(score_function='val_loss', patience=5)
 
     # Create a new data loader for validation set
 
-    # acc_val = 0
-    # acc_test =0
-    # for t in range(args.epochs):
-    #     print(f"Epoch {t+1}\n-------------------------------")
-    #     train(train_dataloader, ensemble_model, loss_fn, optimizer)
-    #     current_acc = test(valid_dataloader, ensemble_model, loss_fn)
-    #     if current_acc > acc_val:
-    #         acc_val = current_acc
-    #         torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
-    #     test(test_dataloader,ensemble_model,loss_fn)
-    #     scheduler.step()
-    # print("Done!")
-
+    acc_val = 0
+    acc_test =0
     for t in range(args.epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, ensemble_model, loss_fn, optimizer)
+        current_acc = test(valid_dataloader, ensemble_model, loss_fn)
+        if current_acc > acc_val:
+            acc_val = current_acc
+            torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
+        test(test_dataloader,ensemble_model,loss_fn)
+        scheduler.step()
+    print("Done!")
+
+    # for t in range(args.epochs):
+    #     print(f"Epoch {t+1}\n-------------------------------")
+    #     train(train_dataloader, ensemble_model, loss_fn, optimizer)
         
-        # Evaluate on validation set after each epoch
-        with torch.no_grad():
-            ensemble_model.eval()
-            val_loss = 0
-            for X, y in val_dataloader:
-                X, y = X.to(device), y.to(device)
-                pred = ensemble_model(X)
-                val_loss += loss_fn(pred, y).item()
-            val_loss /= len(val_dataloader)
-            print(f"Validation Loss: {val_loss}")
+    #     # Evaluate on validation set after each epoch
+    #     with torch.no_grad():
+    #         ensemble_model.eval()
+    #         val_loss = 0
+    #         for X, y in val_dataloader:
+    #             X, y = X.to(device), y.to(device)
+    #             pred = ensemble_model(X)
+    #             val_loss += loss_fn(pred, y).item()
+    #         val_loss /= len(val_dataloader)
+    #         print(f"Validation Loss: {val_loss}")
             
         # Early stopping check
-        early_stopping(val_loss)
-        if early_stopping.stopped:
-            print("Early stopping triggered!")
-            break
+        # early_stopping(val_loss)
+        # if early_stopping.stopped:
+        #     print("Early stopping triggered!")
+        #     break
 
-        test(test_dataloader, ensemble_model, loss_fn)
-        scheduler.step()
+        # test(test_dataloader, ensemble_model, loss_fn)
+        # scheduler.step()
 
     print("Done!")
