@@ -1,8 +1,10 @@
 from PIL import Image
+import pandas as pd
 import numpy as np
+import os
 import torch
 from torchvision import datasets,transforms
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, classification_report
 from model import EarlyEnsembleModel
 
 def inference(path_model, dataset, rootdir='./data/coffee-leaf-diseases/'):
@@ -14,7 +16,7 @@ def inference(path_model, dataset, rootdir='./data/coffee-leaf-diseases/'):
         model = model.to(device)
         model.eval()
         transform_test = transforms.Compose([
-            transforms.Resize(224),
+            transforms.Resize((224,224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]
@@ -36,10 +38,13 @@ def inference(path_model, dataset, rootdir='./data/coffee-leaf-diseases/'):
             list_predict.append(prediction_label)
         accuracy = accuracy_score(list_predict, list_true)
         f1 = f1_score(list_true, list_predict,average='micro')
+        classification_rp = classification_report(list_predict, list_true)
         print("Accuracy:", accuracy)
         print("F1 Score:", f1)
+        print("Classification report:\n", classification_rp)
+        print(np.unique(list_true))
     else:
         # TODO for the second dataset
         pass
 if __name__ =='__main__':
-    inference('Ckpt/best_acc_efficiennet_mobilenet.pth','1')
+    inference('efficient_mobile_vit/best_acc.pth','1')
