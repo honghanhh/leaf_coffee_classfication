@@ -26,25 +26,6 @@ from torch.utils.data import random_split, Subset
 # os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
-class CoffeeLeafDataset(Dataset):
-    def __init__(self, annotations_file, img_dir, transform=None):
-        self.img_labels = pd.read_csv(annotations_file)
-        self.img_dir = img_dir
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.img_labels)
-
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, str(self.img_labels.iloc[idx, 0]))
-        #image = utils.prepare_input_from_uri(img_path+'.jpg')
-        #image = torch.squeeze(image)
-        image = Image.open(img_path+'.jpg')
-        label = 0 if np.sum(self.img_labels.iloc[idx, 1:4]) == 0 else np.argmax(self.img_labels.iloc[idx, 1:4])+1 
-        if self.transform:
-            image = self.transform(image)
-        return image, label
-
 
 class EarlyEnsemble_model(nn.Module):
     def __init__(self, num_classes):
@@ -146,7 +127,7 @@ if __name__ =='__main__':
 
 
     if args.data == 'coffee-leaf-diseases':
-        transform = transforms.Compose([
+        transform_train = transforms.Compose([
             transforms.Resize((224,224)),
             #transforms.CenterCrop(224),
             transforms.RandomApply([
@@ -167,9 +148,9 @@ if __name__ =='__main__':
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]
         )
-        dataset = CoffeeLeafDataset('./data/coffee-leaf-diseases/train_classes.csv','./data/coffee-leaf-diseases/train/images/', transform)
-        test_set = CoffeeLeafDataset('./data/coffee-leaf-diseases/test_classes.csv','./data/coffee-leaf-diseases/test/images/', transform_test)
-        train_set, val_set = torch.utils.data.random_split(dataset, [1000, 264],generator=torch.Generator().manual_seed(42))
+        train_set  = dataset.ImageFolder('./data/symptom/train', transform_train)
+        val_set  = dataset.ImageFolder('./data/symptom/val', transform_test)
+        test_set  = dataset.ImageFolder('./data/symptom/test', transform_test)
     elif args.data == 'co-leaf':
         transform_train = transforms.Compose([
             transforms.Resize((224,224)),
@@ -204,9 +185,15 @@ if __name__ =='__main__':
         train_set.dataset.transform = transform_train
         val_set.dataset.transform = transform_test
         test_set.dataset.transform = transform_test
+	# Define the path where you want to save the indices
+	output_file_path = './test_set_indices.txt'
 
-    else:
-        raise ValueError('Dataset not supported')
+	# Write the indices to the text file
+	with open(output_file_path, 'w') as file:
+	    for index in test_indices:
+		file.write(f"{index}\n")
+	    else:
+		raise ValueError('Dataset not supported')
 
     # Create data loaders.
     train_dataloader = DataLoader(train_set, batch_size = args.batch_size, drop_last = True)
