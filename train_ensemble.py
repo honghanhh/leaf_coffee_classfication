@@ -26,6 +26,25 @@ from torch.utils.data import random_split, Subset
 # os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
+class CoffeeLeafDataset(Dataset):
+    def __init__(self, annotations_file, img_dir, transform=None):
+        self.img_labels = pd.read_csv(annotations_file)
+        self.img_dir = img_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.img_labels)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.img_dir, str(self.img_labels.iloc[idx, 0]))
+        #image = utils.prepare_input_from_uri(img_path+'.jpg')
+        #image = torch.squeeze(image)
+        image = Image.open(img_path+'.jpg')
+        label = 0 if np.sum(self.img_labels.iloc[idx, 1:4]) == 0 else np.argmax(self.img_labels.iloc[idx, 1:4])+1 
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+
 
 class EarlyEnsemble_model(nn.Module):
     def __init__(self, num_classes):
@@ -117,6 +136,7 @@ def split_dataset(indices, classes, split_ratio=0.2):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser(description='Train Early Ensemble Model')
+    # parser.add_argument('--num_labels', type=int, default=5, help='number of labels in the dataset')
     parser.add_argument('--data', type=str, default='coffee-leaf-diseases', help='path to dataset')
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
     parser.add_argument('--epochs', type=int, default=60, help='number of epochs to train (default: 60)')
@@ -127,7 +147,7 @@ if __name__ =='__main__':
 
 
     if args.data == 'coffee-leaf-diseases':
-        transform_train = transforms.Compose([
+        transform = transforms.Compose([
             transforms.Resize((224,224)),
             #transforms.CenterCrop(224),
             transforms.RandomApply([
@@ -151,6 +171,10 @@ if __name__ =='__main__':
         train_set  = dataset.ImageFolder('./data/symptom/train', transform_train)
         val_set  = dataset.ImageFolder('./data/symptom/val', transform_test)
         test_set  = dataset.ImageFolder('./data/symptom/test', transform_test)
+        classes = train_set.classes
+        # dataset = CoffeeLeafDataset('./data/coffee-leaf-diseases/train_classes.csv','./data/coffee-leaf-diseases/train/images/', transform)
+        # test_set = CoffeeLeafDataset('./data/coffee-leaf-diseases/test_classes.csv','./data/coffee-leaf-diseases/test/images/', transform_test)
+        # train_set, val_set = torch.utils.data.random_split(dataset, [1000, 264],generator=torch.Generator().manual_seed(42))
     elif args.data == 'co-leaf':
         transform_train = transforms.Compose([
             transforms.Resize((224,224)),
@@ -185,15 +209,17 @@ if __name__ =='__main__':
         train_set.dataset.transform = transform_train
         val_set.dataset.transform = transform_test
         test_set.dataset.transform = transform_test
-	# Define the path where you want to save the indices
-	output_file_path = './test_set_indices.txt'
+        # Define the path where you want to save the indices
+        output_file_path = './test_set_indices.txt'
 
-	# Write the indices to the text file
-	with open(output_file_path, 'w') as file:
-	    for index in test_indices:
-		file.write(f"{index}\n")
-	    else:
-		raise ValueError('Dataset not supported')
+        # Write the indices to the text file
+        with open(output_file_path, 'w') as file:
+            for index in test_indices:
+            file.write(f"{index}\n")
+            else:
+            raise ValueError('Dataset not supported')
+    else:
+        raise ValueError('Dataset not supported')
 
     # Create data loaders.
     train_dataloader = DataLoader(train_set, batch_size = args.batch_size, drop_last = True)
@@ -210,22 +236,53 @@ if __name__ =='__main__':
     print(f"Using {device} device")
     
     # assert 1==2
-    ensemble_model = EarlyEnsemble_model(5)
+    ensemble_model = EarlyEnsemble_model(classes)
     ensemble_model = ensemble_model.to(device)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(ensemble_model.parameters(), lr=1e-2)
     scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
 
-    acc_val = 0
-    acc_test =0
+    # Define early stopping criteria
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+
+    # Create a new data loader for validation set
+
+    # acc_val = 0
+    # acc_test =0
+    # for t in range(args.epochs):
+    #     print(f"Epoch {t+1}\n-------------------------------")
+    #     train(train_dataloader, ensemble_model, loss_fn, optimizer)
+    #     current_acc = test(valid_dataloader, ensemble_model, loss_fn)
+    #     if current_acc > acc_val:
+    #         acc_val = current_acc
+    #         torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
+    #     test(test_dataloader,ensemble_model,loss_fn)
+    #     scheduler.step()
+    # print("Done!")
+
     for t in range(args.epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, ensemble_model, loss_fn, optimizer)
-        current_acc = test(valid_dataloader, ensemble_model, loss_fn)
-        if current_acc > acc_val:
-            acc_val = current_acc
-            torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
-        test(test_dataloader,ensemble_model,loss_fn)
+        
+        # Evaluate on validation set after each epoch
+        with torch.no_grad():
+            ensemble_model.eval()
+            val_loss = 0
+            for X, y in val_dataloader:
+                X, y = X.to(device), y.to(device)
+                pred = ensemble_model(X)
+                val_loss += loss_fn(pred, y).item()
+            val_loss /= len(val_dataloader)
+            print(f"Validation Loss: {val_loss}")
+            
+        # Early stopping check
+        early_stopping(val_loss)
+        if early_stopping.stopped:
+            print("Early stopping triggered!")
+            break
+
+        test(test_dataloader, ensemble_model, loss_fn)
         scheduler.step()
+
     print("Done!")
