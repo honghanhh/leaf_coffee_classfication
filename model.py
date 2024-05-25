@@ -1,13 +1,14 @@
 import torch.nn as nn
 import torch
-class EarlyEnsembleModel(nn.Module):
-    def __init__(self, num_classes):
-        super(EarlyEnsembleModel, self).__init__()
-        self.efficientnet = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_efficientnet_b0', pretrained=True)
 
+
+
+class EarlyEnsemble_model(nn.Module):
+    def __init__(self, num_classes):
+        super(EarlyEnsemble_model, self).__init__()
+        self.efficientnet = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_efficientnet_b0', pretrained=True)
         self.mobilenet = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
         self.vit = torch.hub.load('facebookresearch/deit:main', 'deit_base_patch16_224', pretrained=True)
-
         
         # Replace the classification layer of EfficientNet
         num_features = self.efficientnet.classifier.fc.in_features
@@ -26,6 +27,8 @@ class EarlyEnsembleModel(nn.Module):
         out_vit = self.vit(x)
 
         out = self.fc(out_efficientnet + out_mobilenet + out_vit)  # Combine the predictions
+        # out = self.fc(out_vit) 
+        # out = self.fc(out_efficientnet + out_mobilenet) 
         return out
     def freeze(self):
         for param in self.densenet.parameters():
