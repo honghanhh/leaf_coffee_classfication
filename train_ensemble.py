@@ -20,26 +20,9 @@ from torchvision.transforms import ToTensor
 
 from torch.optim.lr_scheduler import StepLR as StepLR
 from torch.utils.data import random_split, Subset
-from ignite.handlers import EarlyStopping
 
 from model import EarlyEnsemble_model
 
-class CoffeeLeafDataset(Dataset):
-    def __init__(self, annotations_file, img_dir, transform=None):
-        self.img_labels = pd.read_csv(annotations_file)
-        self.img_dir = img_dir
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.img_labels)
-
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, str(self.img_labels.iloc[idx, 0]))\
-        image = Image.open(img_path+'.jpg')
-        label = 0 if np.sum(self.img_labels.iloc[idx, 1:4]) == 0 else np.argmax(self.img_labels.iloc[idx, 1:4])+1 
-        if self.transform:
-            image = self.transform(image)
-        return image, label
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -60,7 +43,7 @@ def train(dataloader, model, loss_fn, optimizer):
             loss, current = loss.item(), (batch + 1) * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
             
-def test(dataloader, model, loss_fn):
+def test(dataloader, model, loss_fn, phase='val'):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     model.eval()
@@ -73,7 +56,7 @@ def test(dataloader, model, loss_fn):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    print(f"{phase}: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     return correct
 
 # Define a function to split the dataset while maintaining class distribution for CoLeaf datasets
@@ -100,8 +83,7 @@ def split_dataset(indices, classes, split_ratio=0.2):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser(description='Train Early Ensemble Model')
-    # parser.add_argument('--num_labels', type=int, default=5, help='number of labels in the dataset')
-    parser.add_argument('--data', type=str, default='coffee-leaf-diseases', help='path to dataset')
+    parser.add_argument('--data', type=str, default='BRICOL', help='path to dataset')
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
     parser.add_argument('--epochs', type=int, default=60, help='number of epochs to train (default: 60)')
     parser.add_argument('--model_path', type=str, default='./Ckpt/', help='path to save the best model')
@@ -109,75 +91,39 @@ if __name__ =='__main__':
     if not os.path.exists(args.model_path):
         os.makedirs(args.model_path)
 
+    # Define data augmentation
+    transform_train = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.RandomApply([
+            transforms.RandomRotation(10)],p=0.3),
+        transforms.RandomApply([
+            transforms.RandomAffine(10)],p=0.3),
+        transforms.RandomApply([
+            transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.15),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]
+    )
 
-    if args.data == 'coffee-leaf-diseases':
-        transform_train = transforms.Compose([
-            transforms.Resize((224,224)),
-            transforms.RandomApply([
-                transforms.RandomRotation(10)],p=0.3),
-            transforms.RandomApply([
-                transforms.RandomAffine(10)],p=0.3),
-            transforms.RandomApply([
-                transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.15),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        )
+    transform_test = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]
+    )
+    if args.data == 'BRICOL':
+        train_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/train', transform_train)
+        val_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/val', transform_test)
+        test_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/test', transform_test)
 
-        transform_test = transforms.Compose([
-            transforms.Resize((224,224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        )
-        train_set  = datasets.ImageFolder('./data/BRICOL/symptom/train', transform_train)
-        val_set  = datasets.ImageFolder('./data/BRICOL/symptom/val', transform_test)
-        test_set  = datasets.ImageFolder('./data/BRICOL/symptom/test', transform_test)
-        classes = train_set.classes
-    elif args.data == 'co-leaf':
-        transform_train = transforms.Compose([
-            transforms.Resize((224,224)),
-            transforms.RandomApply([
-                transforms.RandomRotation(10)],p=0.3),
-            transforms.RandomApply([
-                transforms.RandomAffine(10)],p=0.3),
-
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        )
-        transform_test = transforms.Compose([
-            transforms.Resize((224,224)),
-            #transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ]
-        )
-        dataset = datasets.ImageFolder('./data/CoLeaf')
-        # Get the indices and classes from the original dataset
-        indices = list(range(len(dataset)))
-        classes = dataset.classes
-
-        # Split the dataset into train and test datasets
-        train_set, test_set = split_dataset(indices, classes, split_ratio=0.2)
-
-        # Further split the train dataset into train and validation datasets
-        train_set, val_set = split_dataset(list(train_set.indices), classes, split_ratio=0.1)
-
-        train_set.dataset.transform = transform_train
-        val_set.dataset.transform = transform_test
-        test_set.dataset.transform = transform_test
-        # Define the path where you want to save the indices
-        output_file_path = './test_set_indices.txt'
-
-        # Write the indices to the text file
-        with open(output_file_path, 'w') as file:
-            for index in test_indices:
-                file.write(f"{index}\n")
-            else:
-                raise ValueError('Dataset not supported')
+    elif args.data == 'CoLeaf':
+        train_set  = datasets.ImageFolder(f'./data/{args.data}/train', transform_train)
+        val_set  = datasets.ImageFolder(f'./data/{args.data}/val', transform_test)
+        test_set  = datasets.ImageFolder(f'./data/{args.data}/test', transform_test)
     else:
         raise ValueError('Dataset not supported')
+
+    classes = train_set.classes
 
     # Create data loaders.
     train_dataloader = DataLoader(train_set, batch_size = args.batch_size, drop_last = True)
@@ -205,10 +151,10 @@ if __name__ =='__main__':
     for t in range(args.epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, ensemble_model, loss_fn, optimizer)
-        current_acc = test(valid_dataloader, ensemble_model, loss_fn)
+        current_acc = test(valid_dataloader, ensemble_model, loss_fn, 'Validation')
         if current_acc > acc_val:
             acc_val = current_acc
             torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
-        test(test_dataloader,ensemble_model,loss_fn)
+        test(test_dataloader,ensemble_model,loss_fn, 'Test')
         scheduler.step()
     print("Done!")
