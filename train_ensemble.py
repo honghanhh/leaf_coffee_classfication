@@ -129,7 +129,7 @@ if __name__ =='__main__':
         raise ValueError('Dataset not supported')
 
     classes = train_set.classes
-    # Create data loaders.
+    # Create data loaders and random seed
     train_dataloader = DataLoader(train_set, batch_size = args.batch_size, shuffle=True,drop_last = True)
     valid_dataloader = DataLoader(val_set, batch_size = args.batch_size, shuffle=False,drop_last = True)
     test_dataloader =  DataLoader(test_set, batch_size = args.batch_size)
@@ -142,23 +142,18 @@ if __name__ =='__main__':
         else "cpu"
     )
     print(f"Using {device} device")
-
     if model_name in model_dict:
         if model_name == "EarlyEnsemble":
-            model = model_dict[model_name](len(classes), use_efficient=use_efficient, use_mobile=use_mobile, use_vit=use_vit)  # Adjust as needed
+            model =  model_dict[model_name](len(classes), int(use_efficient), int(use_mobile), int(use_vit))
         else:
             model = model_dict[model_name](len(classes))
     else:
         raise ValueError(f"Model {model_name} not recognized")
-
-    model = EfficientNet(len(classes))
-    
     model = model.to(device)
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    #scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0)
     scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
     acc_val = 0
