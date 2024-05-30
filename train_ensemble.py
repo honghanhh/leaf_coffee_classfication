@@ -66,7 +66,7 @@ if __name__ =='__main__':
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
     parser.add_argument('--model_name', type=str, required=True, help='Name of the model to use')
     parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train (default: 100)')
-    parser.add_argument('--saved', type=str, default='./Ckpt/', help='path to save the best model')
+    parser.add_argument('--saved', type=str, default='./checkpoints/', help='path to save the best model')
     parser.add_argument('--use_efficient', type=bool, default=False, help='Use EfficientNet in EarlyEnsemble_model')
     parser.add_argument('--use_mobile', type=bool, default=False, help='Use MobileNet in EarlyEnsemble_model')
     parser.add_argument('--use_vit', type=bool, default=False, help='Use Vision Transformer in EarlyEnsemble_model')
@@ -99,11 +99,11 @@ if __name__ =='__main__':
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.RandomApply([
-            transforms.RandomRotation(10)],p=0.3),
+            transforms.RandomRotation(10)],p=0.5),
         transforms.RandomApply([
-            transforms.RandomAffine(10)],p=0.3),
+            transforms.RandomAffine(10)],p=0.5),
         transforms.RandomApply([
-            transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.1),
+            transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.3),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
@@ -117,9 +117,9 @@ if __name__ =='__main__':
         ]
     )
     if args.data == 'BRACOL':
-        train_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/train', transform_train)
-        val_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/val', transform_test)
-        test_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/test', transform_test)
+        train_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/train', transform_train)
+        val_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/val', transform_test)
+        test_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/test', transform_test)
 
     elif args.data == 'CoLeaf':
         train_set  = datasets.ImageFolder(f'./data/{args.data}/train', transform_train)
