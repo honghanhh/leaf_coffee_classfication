@@ -18,11 +18,10 @@ from torch.utils.data import Dataset,DataLoader
 from torchvision import datasets,transforms
 from torchvision.transforms import ToTensor
 
+from torch.optim.lr_scheduler import CosineAnnealingLR as CosineAnnealingLR
 from torch.optim.lr_scheduler import StepLR as StepLR
-from torch.utils.data import random_split, Subset
 
-from model import EarlyEnsemble_model
-
+from model import EarlyEnsembleModel, EfficientNet, MobileNet, ViT, ResNet50
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -59,62 +58,68 @@ def test(dataloader, model, loss_fn, phase='val'):
     print(f"{phase}: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     return correct
 
-# Define a function to split the dataset while maintaining class distribution for CoLeaf datasets
-def split_dataset(indices, classes, split_ratio=0.2):
-    class_counts = {cls: 0 for cls in classes}
-    for idx in indices:
-        _, label = dataset.samples[idx]
-        class_counts[dataset.classes[label]] += 1
-
-    train_indices = []
-    val_indices = []
-    for cls in classes:
-        cls_indices = [idx for idx in indices if dataset.classes[dataset.samples[idx][1]] == cls]
-        np.random.shuffle(cls_indices)
-        split = int(np.floor(split_ratio * len(cls_indices)))
-        val_indices.extend(cls_indices[:split])
-        train_indices.extend(cls_indices[split:])
-    
-    train_set = Subset(dataset, train_indices)
-    val_set = Subset(dataset, val_indices)
-
-    return train_set, val_set
 
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser(description='Train Early Ensemble Model')
-    parser.add_argument('--data', type=str, default='BRICOL', help='path to dataset')
+    parser.add_argument('--data', type=str, default='BRACOL', help='path to dataset')
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-    parser.add_argument('--epochs', type=int, default=60, help='number of epochs to train (default: 60)')
-    parser.add_argument('--model_path', type=str, default='./Ckpt/', help='path to save the best model')
+    parser.add_argument('--model_name', type=str, required=True, help='Name of the model to use')
+    parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train (default: 100)')
+    parser.add_argument('--saved', type=str, default='./Ckpt/', help='path to save the best model')
+    parser.add_argument('--use_efficient', type=bool, default=False, help='Use EfficientNet in EarlyEnsemble_model')
+    parser.add_argument('--use_mobile', type=bool, default=False, help='Use MobileNet in EarlyEnsemble_model')
+    parser.add_argument('--use_vit', type=bool, default=False, help='Use Vision Transformer in EarlyEnsemble_model')
     args = parser.parse_args()
-    if not os.path.exists(args.model_path):
-        os.makedirs(args.model_path)
+
+    # Load config
+    dataset_name = args.data
+    epochs = args.epochs
+    model_name = args.model_name
+    use_efficient = args.use_efficient
+    use_mobile = args.use_mobile
+    use_vit = args.use_vit
+    saved = args.saved
+
+    save_model_path= os.path.join(saved, model_name)
+    if not os.path.exists(save_model_path):
+        os.makedirs(save_model_path, exist_ok=True)
+
+    saved_name =f'{use_efficient}_{use_mobile}_{use_vit}_bestacc.pth'
+    model_dict = {
+        "EarlyEnsemble": EarlyEnsembleModel,
+        "EfficientNet": EfficientNet,
+        "MobileNet": MobileNet,
+        "ViT": ViT,
+        "ResNet50": ResNet50,
+    }
 
     # Define data augmentation
     transform_train = transforms.Compose([
-        transforms.Resize((224,224)),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.RandomApply([
             transforms.RandomRotation(10)],p=0.3),
         transforms.RandomApply([
             transforms.RandomAffine(10)],p=0.3),
         transforms.RandomApply([
-            transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.15),
+            transforms.ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1)],p=0.1),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
     )
 
     transform_test = transforms.Compose([
-        transforms.Resize((224,224)),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
     )
-    if args.data == 'BRICOL':
-        train_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/train', transform_train)
-        val_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/val', transform_test)
-        test_set  = datasets.ImageFolder(f'./data/{args.data}/symptom/test', transform_test)
+    if args.data == 'BRACOL':
+        train_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/train', transform_train)
+        val_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/val', transform_test)
+        test_set  = datasets.ImageFolder(f'../lara2018/classification/dataset/symptom/test', transform_test)
 
     elif args.data == 'CoLeaf':
         train_set  = datasets.ImageFolder(f'./data/{args.data}/train', transform_train)
@@ -124,10 +129,9 @@ if __name__ =='__main__':
         raise ValueError('Dataset not supported')
 
     classes = train_set.classes
-
     # Create data loaders.
-    train_dataloader = DataLoader(train_set, batch_size = args.batch_size, drop_last = True)
-    valid_dataloader = DataLoader(val_set, batch_size = args.batch_size, drop_last = True)
+    train_dataloader = DataLoader(train_set, batch_size = args.batch_size, shuffle=True,drop_last = True)
+    valid_dataloader = DataLoader(val_set, batch_size = args.batch_size, shuffle=False,drop_last = True)
     test_dataloader =  DataLoader(test_set, batch_size = args.batch_size)
 
     device = (
@@ -138,23 +142,36 @@ if __name__ =='__main__':
         else "cpu"
     )
     print(f"Using {device} device")
+
+    if model_name in model_dict:
+        if model_name == "EarlyEnsemble":
+            model = model_dict[model_name](len(classes), use_efficient=use_efficient, use_mobile=use_mobile, use_vit=use_vit)  # Adjust as needed
+        else:
+            model = model_dict[model_name](len(classes))
+    else:
+        raise ValueError(f"Model {model_name} not recognized")
+
+    model = EfficientNet(len(classes))
     
-    ensemble_model = EarlyEnsemble_model(len(classes))
-    ensemble_model = ensemble_model.to(device)
+    model = model.to(device)
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(ensemble_model.parameters(), lr=1e-2)
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    #scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0)
+    scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
     acc_val = 0
-    acc_test =0
-    for t in range(args.epochs):
+    print(epochs)
+    for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
-        train(train_dataloader, ensemble_model, loss_fn, optimizer)
-        current_acc = test(valid_dataloader, ensemble_model, loss_fn, 'Validation')
+        train(train_dataloader, model, loss_fn, optimizer)
+        current_acc = test(valid_dataloader, model, loss_fn, 'Validation')
         if current_acc > acc_val:
             acc_val = current_acc
-            torch.save(ensemble_model.state_dict(), args.model_path+ 'best_acc.pth')
-        test(test_dataloader,ensemble_model,loss_fn, 'Test')
+            torch.save(model.state_dict(), os.path.join(save_model_path,saved_name))
+        test(test_dataloader,model,loss_fn, 'Test')
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"Learning Rate: {current_lr}")
         scheduler.step()
     print("Done!")

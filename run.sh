@@ -1,5 +1,8 @@
-# python train_ensemble.py --data co-leaf --num_labels 10 --model_path efficient_mobile_vit_coleaf/ > efficient_mobile_vit_coleaf.log
-# python train_ensemble.py --model_path efficient_mobile_vit/ > efficient_mobile_vit.log
-# python train_ensemble.py --model_path efficient_mobile_vit_es/ > efficient_mobile_vit_es.log
-# python train_ensemble.py --model_path vit_es/ > vit_es.log
-python train_ensemble.py --model_path efficient_mobile/ > efficient_mobile.log
+python train_ensemble.py --epochs 100 --model_name EarlyEnsemble --use_efficient True  --use_mobile True
+python train_ensemble.py --epochs 100 --model_name EfficientNet
+python train_ensemble.py --epochs 100 --model_name MobileNet
+python train_ensemble.py --epochs 100 --model_name ViT
+python train_ensemble.py --epochs 100 --model_name ResNet50
+python train_ensemble.py --epochs 100 --model_name EarlyEnsemble --use_efficient True --use_mobile True --use_vit True
+python train_ensemble.py --epochs 100 --model_name EarlyEnsemble --use_efficient True --use_vit True
+python train_ensemble.py --epochs 100 --model_name EarlyEnsemble --use_mobile True --use_vit True

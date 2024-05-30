@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+data/CoLeaf/
+efficient_mobile/
+efficient_mobile_vit/
+efficient_mobile_vit_es/
+train_old.py
+vit_es/
+
 # C extensions
 *.so
 
